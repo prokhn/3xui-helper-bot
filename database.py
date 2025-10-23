@@ -90,13 +90,13 @@ class DatabaseManager:
             network = stream_settings.get('network', 'tcp')
             security = stream_settings.get('security', 'none')
             
-            settings = stream_settings.get('settings', {})
-            public_key = settings.get('publicKey', '')
-            fingerprint = settings.get('fingerprint', '')
-            
             reality_settings = stream_settings.get('realitySettings', {})
             server_name = reality_settings.get('serverNames', [''])[0]
             short_id = reality_settings.get('shortIds', [''])[0]
+
+            realitySettingsSettings = reality_settings.get('settings', {})
+            public_key = realitySettingsSettings.get('publicKey', '')
+            fingerprint = realitySettingsSettings.get('fingerprint', '')
             
             # Данные клиента
             client_id = client.get('id', '')
