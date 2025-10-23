@@ -65,7 +65,8 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ Клиенты не найдены.")
         return
     
-    # Отправляем информацию для каждого клиента
+    # Объединяем информацию о всех клиентах в одно сообщение
+    messages = []
     for client_data in menu_data:
         email = client_data['email']
         
@@ -78,18 +79,25 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             message = f"👤 **{email}**\n\n"
             message += "📊 Статистика трафика недоступна"
         
-        # Добавляем время обновления
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message += f"\n\n📋🔄 Обновлено: {current_time}"
-        
-        # Создаем кнопки
+        messages.append(message)
+    
+    # Объединяем все сообщения
+    full_message = "\n\n".join(messages)
+    
+    # Добавляем время обновления в конце
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_message += f"\n\n📋🔄 Обновлено: {current_time}"
+    
+    # Создаем кнопки для первого клиента (если есть)
+    if menu_data:
+        first_email = menu_data[0]['email']
         keyboard = [
-            [InlineKeyboardButton("📄 Мой конфиг", callback_data=f"config_{email}")],
-            [InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh_{email}")]
+            [InlineKeyboardButton("📄 Мой конфиг", callback_data=f"config_{first_email}")],
+            [InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh_{first_email}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        await update.message.reply_text(full_message, parse_mode='Markdown', reply_markup=reply_markup)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик нажатий на кнопки"""
@@ -101,20 +109,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if query.data.startswith("config_"):
         email = query.data.replace("config_", "")
         
-        # Получаем конфиг через публичный API
-        config = db_manager.get_client_config(user_id, email)
+        # Получаем все конфиги пользователя
+        user_clients = db_manager.get_user_clients(user_id)
         
-        if not config:
-            await query.edit_message_text("❌ Клиент не найден.")
+        if not user_clients:
+            await query.edit_message_text("❌ Клиенты не найдены.")
             return
         
-        message = f"📄 Твой конфиг:\n\n```\n{config}\n```"
+        # Формируем сообщение со всеми конфигами
+        config_messages = []
+        for client in user_clients:
+            client_email = client.get('email', '')
+            config = db_manager.generate_vless_config(client)
+            
+            config_messages.append(f"📄 Твой конфиг для `{client_email}`:\n```\n{config}\n```")
+        
+        # Объединяем все конфиги
+        full_message = "\n\n".join(config_messages)
         
         # Создаем кнопку "Меню"
         keyboard = [[InlineKeyboardButton("📋 Меню", callback_data="menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        await query.edit_message_text(full_message, parse_mode='Markdown', reply_markup=reply_markup)
     
     elif query.data.startswith("refresh_"):
         email = query.data.replace("refresh_", "")
@@ -135,7 +152,7 @@ async def show_menu_from_callback(query) -> None:
         await query.edit_message_text("❌ Клиенты не найдены.")
         return
     
-    # Отправляем информацию для каждого клиента
+    # Объединяем информацию о всех клиентах в одно сообщение
     messages = []
     for client_data in menu_data:
         email = client_data['email']
@@ -149,14 +166,14 @@ async def show_menu_from_callback(query) -> None:
             message = f"👤 **{email}**\n\n"
             message += "📊 Статистика трафика недоступна"
         
-        # Добавляем время обновления
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message += f"\n\n📋🔄 Обновлено: {current_time}"
-        
         messages.append(message)
     
     # Объединяем все сообщения
     full_message = "\n\n".join(messages)
+    
+    # Добавляем время обновления в конце
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_message += f"\n\n📋🔄 Обновлено: {current_time}"
     
     # Создаем кнопки для первого клиента (если есть)
     if menu_data:
