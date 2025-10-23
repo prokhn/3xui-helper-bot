@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: 3xui-helper-bot
+    restart: unless-stopped
+    
+    # Подключаем внешние volumes
+    volumes:
+      - ./x-ui.db:/app/x-ui.db:ro  # База данных только для чтения
+      - ./.env:/app/.env:ro         # Переменные окружения
+    
+    # Переменные окружения (если нужно переопределить)
+    environment:
+      - PYTHONUNBUFFERED=1
+    
+    # Логирование
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Проверка здоровья контейнера
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('https://api.telegram.org')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
