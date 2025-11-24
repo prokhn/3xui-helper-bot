@@ -109,9 +109,9 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         
         if client_data['traffic_stats']:
             message = f"👤 **{email}**\n\n"
-            message += f"🔼 Исходящий трафик: ↑{client_data['up_gb']}GB\n"
-            message += f"🔽 Входящий трафик: ↓{client_data['down_gb']}GB\n"
-            message += f"📊 Всего: ↑↓{client_data['total_gb']}GB"
+            message += f"🔼 Исходящий трафик: ↑{round(client_data['up_gb'], 3)}GB\n"
+            message += f"🔽 Входящий трафик: ↓{round(client_data['down_gb'], 3)}GB\n"
+            message += f"📊 Всего: ↑↓{round(client_data['total_gb'], 3)}GB"
         else:
             message = f"👤 **{email}**\n\n"
             message += "📊 Статистика трафика недоступна"
@@ -161,9 +161,9 @@ async def show_menu_from_callback(query, context: Optional[ContextTypes.DEFAULT_
         
         if client_data['traffic_stats']:
             message = f"👤 **{email}**\n\n"
-            message += f"🔼 Исходящий трафик: ↑{client_data['up_gb']}GB\n"
-            message += f"🔽 Входящий трафик: ↓{client_data['down_gb']}GB\n"
-            message += f"📊 Всего: ↑↓{client_data['total_gb']}GB"
+            message += f"🔼 Исходящий трафик: ↑{round(client_data['up_gb'], 3)}GB\n"
+            message += f"🔽 Входящий трафик: ↓{round(client_data['down_gb'], 3)}GB\n"
+            message += f"📊 Всего: ↑↓{round(client_data['total_gb'], 3)}GB"
         else:
             message = f"👤 **{email}**\n\n"
             message += "📊 Статистика трафика недоступна"
@@ -223,9 +223,9 @@ async def show_menu_by_user_id(bot, user_id: int, chat_id: int, edit_message_id:
         
         if client_data['traffic_stats']:
             message = f"👤 **{email}**\n\n"
-            message += f"🔼 Исходящий трафик: ↑{client_data['up_gb']}GB\n"
-            message += f"🔽 Входящий трафик: ↓{client_data['down_gb']}GB\n"
-            message += f"📊 Всего: ↑↓{client_data['total_gb']}GB"
+            message += f"🔼 Исходящий трафик: ↑{round(client_data['up_gb'], 3)}GB\n"
+            message += f"🔽 Входящий трафик: ↓{round(client_data['down_gb'], 3)}GB\n"
+            message += f"📊 Всего: ↑↓{round(client_data['total_gb'], 3)}GB"
         else:
             message = f"👤 **{email}**\n\n"
             message += "📊 Статистика трафика недоступна"
