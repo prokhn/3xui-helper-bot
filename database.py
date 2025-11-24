@@ -2,6 +2,7 @@ import sqlite3
 import json
 import os
 import hashlib
+from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from dotenv import load_dotenv
 
@@ -249,3 +250,43 @@ class DatabaseManager:
         except Exception as e:
             print(f"Ошибка при получении уникальных Telegram ID: {e}")
             return []
+    
+    def get_all_clients(self) -> List[Dict]:
+        """Получить всех клиентов из БД"""
+        try:
+            inbound_data = self.get_inbound_data()
+            if not inbound_data or 'clients' not in inbound_data.get('settings', {}):
+                return []
+            
+            return inbound_data['settings']['clients']
+            
+        except Exception as e:
+            print(f"Ошибка при получении всех клиентов: {e}")
+            return []
+    
+    def get_inbound_remark(self) -> str:
+        """Получить remark инбаунда"""
+        try:
+            inbound_data = self.get_inbound_data()
+            if inbound_data:
+                return inbound_data.get('remark', 'Unknown')
+        except Exception as e:
+            print(f"Ошибка при получении remark инбаунда: {e}")
+        return 'Unknown'
+    
+    def check_new_clients(self, old_clients: List[Dict]) -> List[Dict]:
+        """Проверить появление новых клиентов"""
+        current_clients = self.get_all_clients()
+        new_clients = []
+        
+        # Создаем множество email существующих клиентов
+        old_emails = {client.get('email', '') for client in old_clients}
+        
+        # Ищем новых клиентов
+        for client in current_clients:
+            email = client.get('email', '')
+            if email and email not in old_emails:
+                new_clients.append(client)
+        
+        return new_clients
+    

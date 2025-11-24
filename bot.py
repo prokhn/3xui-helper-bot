@@ -47,6 +47,7 @@ db_manager = DatabaseManager()
 # Глобальные переменные для мониторинга
 monitoring_active = False
 last_configs = {}
+last_clients = []
 
 # Состояния для ConversationHandler - используем разные диапазоны для разных диалогов
 # Рассылка: 10-19
@@ -348,6 +349,49 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except Exception as e:
             logger.error(f"[MENU] Ошибка при отправке меню пользователю {user_id}: {e}")
             await query.answer("Ошибка при загрузке меню", show_alert=True)
+    
+    elif query.data.startswith("admin_config_"):
+        # Обработка кнопки "Конфиг" из уведомления о новом клиенте (только для админов)
+        user_id = query.from_user.id
+        
+        if not is_admin(user_id):
+            await query.answer("У вас нет прав администратора", show_alert=True)
+            return
+        
+        client_id = query.data.replace("admin_config_", "")
+        logger.info(f"[ADMIN] Запрос конфига для клиента {client_id} от администратора {user_id}")
+        
+        # Находим клиента по ID
+        all_clients = db_manager.get_all_clients()
+        target_client = None
+        for client in all_clients:
+            if client.get('id') == client_id:
+                target_client = client
+                break
+        
+        if not target_client:
+            await query.answer("Клиент не найден", show_alert=True)
+            return
+        
+        # Генерируем конфиг
+        config = db_manager.generate_vless_config(target_client)
+        client_email = target_client.get('email', 'Неизвестно')
+        
+        # Убираем кнопку из сообщения
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception as e:
+            logger.error(f"Ошибка при удалении кнопки конфига: {e}")
+        
+        # Отправляем конфиг отдельным сообщением
+        config_message = f"🔑 Конфиг для `{client_email}`:\n```\n{config}\n```"
+        
+        try:
+            await query.message.reply_text(config_message, parse_mode='Markdown')
+            logger.info(f"[ADMIN] Конфиг отправлен администратору {user_id} для клиента {client_email}")
+        except Exception as e:
+            logger.error(f"Ошибка отправки конфига администратору {user_id}: {e}")
+            await query.answer("Ошибка при генерации конфига", show_alert=True)
 
 # ==================== РАССЫЛКА ====================
 
@@ -799,22 +843,61 @@ async def report_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 # ==================== МОНИТОРИНГ ====================
 
+def format_new_client_message(client: Dict) -> str:
+    """Форматировать информацию о новом клиенте для сообщения"""
+    client_id = client.get('id', 'Неизвестно')
+    email = client.get('email', 'Неизвестно')
+    
+    # Получаем информацию о трафике
+    total = client.get('total', 0)
+    if total == 0:
+        traffic_info = "♾️ Unlimited(Reset)"
+    else:
+        traffic_gb = db_manager.bytes_to_gb(total)
+        traffic_info = f"{round(traffic_gb, 3)}GB"
+    
+    # Получаем дату исчерпания
+    expiry_time = client.get('expiryTime', 0)
+    if expiry_time == 0:
+        expiry_info = "♾️ Безлимит"
+    else:
+        expiry_date = datetime.fromtimestamp(expiry_time / 1000)
+        expiry_info = expiry_date.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Получаем комментарий
+    comment = client.get('comment', '')
+    if not comment:
+        comment = 'Нет комментария'
+    
+    # Получаем remark инбаунда
+    inbound_remark = db_manager.get_inbound_remark()
+    
+    message = f"🔄 Инбаунды: {inbound_remark}\n\n"
+    message += f"🔑 ID: {client_id}\n"
+    message += f"📧 Email: {email}\n"
+    message += f"📊 Трафик: {traffic_info}\n"
+    message += f"📅 Дата исчерпания: {expiry_info}\n"
+    message += f"💬 Комментарий: {comment}"
+    
+    return message
+
 async def monitor_database_changes(application: Application) -> None:
     """Мониторинг изменений в БД и отправка уведомлений"""
-    global monitoring_active, last_configs
+    global monitoring_active, last_configs, last_clients
     
     monitoring_active = True
     logger.info("Запуск мониторинга изменений БД...")
     
     # Инициализируем начальное состояние
     last_configs = db_manager.get_all_user_configs()
+    last_clients = db_manager.get_all_clients()
     
     while monitoring_active:
         try:
-            # Проверяем изменения
+            # Проверяем изменения конфигов
             changed_configs = db_manager.check_config_changes(last_configs)
             
-            # Отправляем уведомления о изменениях
+            # Отправляем уведомления о изменениях конфигов
             for tg_id, updated_configs in changed_configs.items():
                 for config_data in updated_configs:
                     email = config_data['email']
@@ -838,10 +921,39 @@ async def monitor_database_changes(application: Application) -> None:
                     except Exception as e:
                         logger.error(f"Ошибка отправки уведомления для {tg_id}: {e}")
             
+            # Проверяем новых клиентов
+            new_clients = db_manager.check_new_clients(last_clients)
+            
+            # Отправляем уведомления о новых клиентах администраторам
+            for new_client in new_clients:
+                client_info = format_new_client_message(new_client)
+                client_email = new_client.get('email', '')
+                client_id = new_client.get('id', '')
+                
+                # Добавляем кнопку "Конфиг"
+                keyboard = [[InlineKeyboardButton("🔑 Конфиг", callback_data=f"admin_config_{client_id}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Отправляем всем администраторам
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await application.bot.send_message(
+                            chat_id=admin_id,
+                            text=client_info,
+                            reply_markup=reply_markup
+                        )
+                        logger.info(f"Отправлено уведомление о новом клиенте {client_email} администратору {admin_id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления о новом клиенте администратору {admin_id}: {e}")
+            
             # Обновляем состояние
             if changed_configs:
                 last_configs = db_manager.get_all_user_configs()
                 logger.info(f"Обнаружены изменения в конфигах: {len(changed_configs)} пользователей")
+            
+            if new_clients:
+                last_clients = db_manager.get_all_clients()
+                logger.info(f"Обнаружены новые клиенты: {len(new_clients)}")
             
             # Ждем перед следующей проверкой
             await asyncio.sleep(30)  # Проверяем каждые 30 секунд
