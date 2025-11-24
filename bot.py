@@ -128,6 +128,12 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Добавляем информацию о команде /report
     full_message += f"\n\n📝 Используйте /report для сообщения о проблемах"
     
+    # Добавляем админские команды для администраторов
+    if is_admin(user_id):
+        full_message += f"\n\n🔐 **Админские команды:**\n"
+        full_message += f"📢 /mail - рассылка сообщений всем пользователям\n"
+        full_message += f"📝 /report - создание отчета о проблеме"
+    
     # Создаем кнопки для первого клиента (если есть)
     if menu_data:
         first_email = menu_data[0]['email']
@@ -174,6 +180,12 @@ async def show_menu_from_callback(query, context: Optional[ContextTypes.DEFAULT_
     # Добавляем информацию о команде /report
     full_message += f"\n\n📝 Используйте /report для сообщения о проблемах"
     
+    # Добавляем админские команды для администраторов
+    if is_admin(user_id):
+        full_message += f"\n\n🔐 **Админские команды:**\n"
+        full_message += f"📢 /mail - рассылка сообщений всем пользователям\n"
+        full_message += f"📝 /report - создание отчета о проблеме"
+    
     # Создаем кнопки для первого клиента (если есть)
     if menu_data:
         first_email = menu_data[0]['email']
@@ -184,6 +196,95 @@ async def show_menu_from_callback(query, context: Optional[ContextTypes.DEFAULT_
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(full_message, parse_mode='Markdown', reply_markup=reply_markup)
+
+async def show_menu_by_user_id(bot, user_id: int, chat_id: int, edit_message_id: Optional[int] = None) -> None:
+    """Показать меню по user_id (для использования после завершения диалогов)"""
+    logger.info(f"[MENU] show_menu_by_user_id вызвана для user_id={user_id}, chat_id={chat_id}")
+    menu_data = db_manager.get_user_menu_data(user_id)
+    
+    logger.info(f"[MENU] Получено данных о клиентах: {len(menu_data) if menu_data else 0}")
+    
+    if not menu_data:
+        message_text = "❌ Клиенты не найдены."
+        logger.warning(f"[MENU] Клиенты не найдены для пользователя {user_id}")
+        if edit_message_id:
+            try:
+                await bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=message_text)
+            except:
+                await bot.send_message(chat_id=chat_id, text=message_text)
+        else:
+            await bot.send_message(chat_id=chat_id, text=message_text)
+        return
+    
+    # Объединяем информацию о всех клиентах в одно сообщение
+    messages = []
+    for client_data in menu_data:
+        email = client_data['email']
+        
+        if client_data['traffic_stats']:
+            message = f"👤 **{email}**\n\n"
+            message += f"🔼 Исходящий трафик: ↑{client_data['up_gb']}GB\n"
+            message += f"🔽 Входящий трафик: ↓{client_data['down_gb']}GB\n"
+            message += f"📊 Всего: ↑↓{client_data['total_gb']}GB"
+        else:
+            message = f"👤 **{email}**\n\n"
+            message += "📊 Статистика трафика недоступна"
+        
+        messages.append(message)
+    
+    # Объединяем все сообщения
+    full_message = "\n\n".join(messages)
+    
+    # Добавляем время обновления в конце
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_message += f"\n\n📋🔄 Обновлено: {current_time}"
+    
+    # Добавляем информацию о команде /report
+    full_message += f"\n\n📝 Используйте /report для сообщения о проблемах"
+    
+    # Добавляем админские команды для администраторов
+    if is_admin(user_id):
+        full_message += f"\n\n🔐 **Админские команды:**\n"
+        full_message += f"📢 /mail - рассылка сообщений всем пользователям\n"
+        full_message += f"📝 /report - создание отчета о проблеме"
+    
+    # Создаем кнопки для первого клиента (если есть)
+    if menu_data:
+        first_email = menu_data[0]['email']
+        keyboard = [
+            [InlineKeyboardButton("📄 Мой конфиг", callback_data=f"config_{first_email}")],
+            [InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh_{first_email}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if edit_message_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=edit_message_id,
+                    text=full_message,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+            except:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=full_message,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+        else:
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=full_message,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+                logger.info(f"[MENU] Сообщение с меню успешно отправлено пользователю {user_id}")
+            except Exception as e:
+                logger.error(f"[MENU] Ошибка при отправке меню пользователю {user_id}: {e}")
+                raise
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик нажатий на кнопки (только для обычных кнопок, не связанных с диалогами)"""
@@ -225,6 +326,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     elif query.data == "menu":
         await show_menu_from_callback(query, context)
+    
+    elif query.data == "menu_from_config":
+        # Обработка кнопки "Меню" из сообщения об обновлении конфига
+        user_id = query.from_user.id
+        chat_id = query.message.chat_id
+        
+        logger.info(f"[MENU] Обработка кнопки меню от пользователя {user_id} в чате {chat_id}")
+        
+        # Убираем кнопку из сообщения
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+            logger.info(f"[MENU] Кнопка успешно скрыта")
+        except Exception as e:
+            logger.error(f"[MENU] Ошибка при удалении кнопки меню: {e}")
+        
+        # Отправляем новое сообщение с меню
+        try:
+            await show_menu_by_user_id(context.bot, user_id, chat_id)
+            logger.info(f"[MENU] Меню успешно отправлено пользователю {user_id}")
+        except Exception as e:
+            logger.error(f"[MENU] Ошибка при отправке меню пользователю {user_id}: {e}")
+            await query.answer("Ошибка при загрузке меню", show_alert=True)
 
 # ==================== РАССЫЛКА ====================
 
@@ -383,6 +506,10 @@ async def mail_handle_confirm_button(update: Update, context: ContextTypes.DEFAU
         context.user_data.pop('mail_confirm_message_id', None)
         
         logger.info(f"[MAIL] Рассылка завершена для пользователя {user_id}: успешно {success_count}, ошибок {failed_count}")
+        
+        # Показываем главное меню
+        await show_menu_by_user_id(context.bot, user_id, query.message.chat_id)
+        
         return END
     
     elif callback_data == "mail_cancel_confirm":
@@ -395,6 +522,9 @@ async def mail_handle_confirm_button(update: Update, context: ContextTypes.DEFAU
         context.user_data.pop('mail_message_id', None)
         context.user_data.pop('mail_chat_id', None)
         context.user_data.pop('mail_confirm_message_id', None)
+        
+        # Показываем главное меню
+        await show_menu_by_user_id(context.bot, user_id, query.message.chat_id)
         
         return END
     
@@ -442,7 +572,9 @@ async def mail_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.pop('mail_chat_id', None)
     context.user_data.pop('mail_confirm_message_id', None)
     
-    await show_menu_from_callback(query, context)
+    # Показываем главное меню
+    await show_menu_by_user_id(context.bot, user_id, query.message.chat_id)
+    
     return END
 
 # ==================== ОТЧЕТ ====================
@@ -633,6 +765,10 @@ async def report_comments(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data.pop('report_data', None)
     
     logger.info(f"[REPORT] Этап 5: Отчет завершен для пользователя {user_id}")
+    
+    # Показываем главное меню
+    await show_menu_by_user_id(context.bot, user_id, update.message.chat_id)
+    
     return END
 
 async def report_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -687,11 +823,16 @@ async def monitor_database_changes(application: Application) -> None:
                     message = f"🚨 Конфиг для {email} был обновлён\n\n"
                     message += f"```\n{config}\n```"
                     
+                    # Добавляем кнопку "Меню"
+                    keyboard = [[InlineKeyboardButton("📋 Меню", callback_data="menu_from_config")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
                     try:
                         await application.bot.send_message(
                             chat_id=tg_id,
                             text=message,
-                            parse_mode='Markdown'
+                            parse_mode='Markdown',
+                            reply_markup=reply_markup
                         )
                         logger.info(f"Отправлено уведомление об обновлении конфига для {email} (TG ID: {tg_id})")
                     except Exception as e:
