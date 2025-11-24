@@ -230,3 +230,22 @@ class DatabaseManager:
                     changed_configs[tg_id].append(current_config)
         
         return changed_configs
+    
+    def get_all_unique_telegram_ids(self) -> List[int]:
+        """Получить все уникальные Telegram ID пользователей из БД"""
+        try:
+            inbound_data = self.get_inbound_data()
+            if not inbound_data or 'clients' not in inbound_data.get('settings', {}):
+                return []
+            
+            telegram_ids = set()
+            for client in inbound_data['settings']['clients']:
+                tg_id = client.get('tgId')
+                if tg_id:
+                    telegram_ids.add(tg_id)
+            
+            return list(telegram_ids)
+            
+        except Exception as e:
+            print(f"Ошибка при получении уникальных Telegram ID: {e}")
+            return []
